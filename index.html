@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -93,12 +92,13 @@
                 { id: '2', name: 'Entertainment', rate: -1.0, finePercent: 15 },
                 { id: '3', name: 'Exercise', rate: 0.3, finePercent: 0 }
             ],
-            history: [] // Each item: { date, label, delta, mins, id, time }
+            history: [] 
         };
 
         function save() { 
             localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); 
-            document.getElementById('wallet-balance').textContent = state.wallet.toFixed(2);
+            const balanceEl = document.getElementById('wallet-balance');
+            if (balanceEl) balanceEl.textContent = state.wallet.toFixed(2);
         }
 
         function load() {
@@ -121,7 +121,6 @@
                 const dayHistory = state.history.filter(h => h.date === state.selectedDate);
                 main.innerHTML = `
                     <div class="space-y-6 fade-in">
-                        <!-- Date Block -->
                         <div class="flex items-center justify-between bg-system-800 p-4 rounded-2xl border border-system-700">
                             <div class="flex items-center gap-3">
                                 <div class="bg-system-accent/20 p-2 rounded-lg text-system-accent">
@@ -259,8 +258,6 @@
                             const dateStr = `${state.calYear}-${String(state.calMonth + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
                             const isToday = dateStr === todayStr;
                             const isActive = dateStr === state.selectedDate;
-                            
-                            // Check for negative balance
                             const daySum = state.history.filter(h => h.date === dateStr).reduce((acc, curr) => acc + curr.delta, 0);
                             const hasFine = daySum < 0;
 
@@ -327,7 +324,7 @@
             });
         }
 
-        // --- LOG EDITING ---
+        // --- EDITING ---
 
         function openEditLogModal(id) {
             const entry = state.history.find(h => h.id === id);
@@ -356,121 +353,21 @@
 
         function updateLog(id) {
             const idx = state.history.findIndex(h => h.id === id);
-            const label = document.getElementById('e-label').value;
             const newDelta = parseFloat(document.getElementById('e-delta').value);
-            const newMins = parseInt(document.getElementById('e-mins').value);
-
-            // Correct wallet
             state.wallet -= state.history[idx].delta;
             state.wallet += newDelta;
-
-            state.history[idx].label = label;
+            state.history[idx].label = document.getElementById('e-label').value;
             state.history[idx].delta = newDelta;
-            state.history[idx].mins = newMins;
-
+            state.history[idx].mins = parseInt(document.getElementById('e-mins').value);
             save(); closeModal(); switchView('log');
         }
 
-        // --- SAFE DELETION ---
-
-        function requestSafeDelete(type, id = null) {
-            let message = "Are you sure you want to delete this?";
-            let action = () => {};
-
-            if (type === 'entry') {
-                message = "Remove this specific transaction? Wallet balance will be adjusted.";
-                action = () => {
-                    const idx = state.history.findIndex(h => h.id === id);
-                    state.wallet -= state.history[idx].delta;
-                    state.history.splice(idx, 1);
-                    save(); closeModal(); switchView('log');
-                };
-            } else if (type === 'today') {
-                message = `Wipe ALL data for ${state.selectedDate}? This includes ledger entries. Debt and total wallet will be adjusted based on removed entries.`;
-                action = () => {
-                    const daily = state.history.filter(h => h.date === state.selectedDate);
-                    daily.forEach(h => state.wallet -= h.delta);
-                    state.history = state.history.filter(h => h.date !== state.selectedDate);
-                    save(); closeModal(); switchView('log');
-                };
-            } else if (type === 'all') {
-                message = "CRITICAL: This will delete ALL history across ALL dates. Are you absolutely certain?";
-                action = () => {
-                    state.history = [];
-                    state.wallet = 10; // Reset to default
-                    state.debt = 0;
-                    save(); closeModal(); switchView('log');
-                };
-            }
-
-            showModal(`
-                <div class="p-6 text-center space-y-5">
-                    <div class="w-16 h-16 bg-system-danger/10 text-system-danger rounded-full flex items-center justify-center mx-auto">
-                        <i class="fa-solid fa-triangle-exclamation text-2xl"></i>
-                    </div>
-                    <h3 class="font-bold text-white text-lg">Confirm Action</h3>
-                    <p class="text-xs text-slate-400 leading-relaxed">${message}</p>
-                    <div class="flex flex-col gap-2">
-                        <button id="confirm-del-btn" class="bg-system-danger py-4 rounded-xl font-bold uppercase tracking-widest text-xs">Confirm Delete</button>
-                        <button onclick="closeModal()" class="py-3 text-slate-500 text-xs font-bold">Cancel</button>
-                    </div>
-                </div>
-            `);
-
-            document.getElementById('confirm-del-btn').onclick = action;
-        }
-
-        // --- REST OF UI (MARKET, CREDIT, SETTINGS) ---
-
-        function openLoanModal() {
-            showModal(`
-                <div class="p-6 space-y-5">
-                    <h3 class="font-bold text-lg text-white">Borrow Coins</h3>
-                    <p class="text-xs text-slate-400">Processing interest (${state.settings.loanInterest}%) is applied instantly.</p>
-                    <input type="number" id="l-amount" placeholder="Amount to borrow" class="w-full bg-system-950 border border-system-700 rounded-xl p-4 text-white font-mono">
-                    <button onclick="takeLoan()" class="w-full bg-indigo-600 py-4 rounded-xl font-bold shadow-lg">Confirm Loan</button>
-                    <button onclick="closeModal()" class="w-full text-slate-500 text-xs py-2">Cancel</button>
-                </div>
-            `);
-        }
-
-        function takeLoan() {
-            const amount = parseFloat(document.getElementById('l-amount').value || 0);
-            if (amount <= 0) return;
-            const interest = amount * (state.settings.loanInterest / 100);
-            state.wallet += amount;
-            state.debt += (amount + interest);
-            addHistory("Manual Loan Received", amount);
-            addHistory("Loan Processing Fee", -interest);
-            save(); closeModal(); switchView('credit');
-        }
-
-        function openPaybackModal() {
-            showModal(`
-                <div class="p-6 space-y-5">
-                    <h3 class="font-bold text-lg text-white">Repay Credit</h3>
-                    <p class="text-xs text-slate-400">Debt: ${state.debt.toFixed(2)}c</p>
-                    <input type="number" id="p-amount" placeholder="Payment amount" class="w-full bg-system-950 border border-system-700 rounded-xl p-4 text-white font-mono">
-                    <button onclick="repayLoan()" class="w-full bg-system-success text-black py-4 rounded-xl font-bold">Pay Back</button>
-                    <button onclick="closeModal()" class="w-full text-slate-500 text-xs py-2">Cancel</button>
-                </div>
-            `);
-        }
-
-        function repayLoan() {
-            const amount = parseFloat(document.getElementById('p-amount').value || 0);
-            if (amount <= 0 || amount > state.wallet || amount > state.debt) return;
-            state.wallet -= amount;
-            state.debt -= amount;
-            addHistory("Debt Repayment", -amount);
-            save(); closeModal(); switchView('credit');
-        }
-
         function openItemModal(id = null) {
-            const item = id ? state.items.find(i => i.id === id) : { name: '', rate: 0.5, finePercent: 0 };
+            const isNew = id === null;
+            const item = !isNew ? state.items.find(i => i.id === id) : { name: '', rate: 0.5, finePercent: 0 };
             showModal(`
                 <div class="p-6 space-y-5">
-                    <h3 class="font-bold text-lg text-white">${id ? 'Update Item' : 'New Market Item'}</h3>
+                    <h3 class="font-bold text-lg text-white">${isNew ? 'New Market Item' : 'Update Item'}</h3>
                     <div class="space-y-4">
                         <input type="text" id="m-name" value="${item.name}" placeholder="Name" class="w-full bg-system-950 border border-system-700 rounded-xl p-3 text-white">
                         <input type="number" step="0.01" id="m-rate" value="${item.rate}" placeholder="Rate (+ Earn / - Cost)" class="w-full bg-system-950 border border-system-700 rounded-xl p-3 text-white font-mono">
@@ -483,8 +380,11 @@
                         <button onclick="closeModal()" class="flex-1 bg-system-800 py-3 rounded-xl font-bold text-sm">Cancel</button>
                         <button onclick="saveItem('${id}')" class="flex-1 bg-system-accent py-3 rounded-xl font-bold text-sm">Save</button>
                     </div>
+                    ${!isNew ? `<button onclick="requestSafeDelete('activity', '${id}')" class="w-full text-system-danger text-[10px] font-bold mt-2 uppercase">Delete Activity</button>` : ''}
                 </div>
             `);
+            const rateInput = document.getElementById('m-rate');
+            if(rateInput) rateInput.oninput = (e) => document.getElementById('fine-container').classList.toggle('hidden', parseFloat(e.target.value) >= 0);
         }
 
         function saveItem(id) {
@@ -501,10 +401,100 @@
             save(); closeModal(); switchView('market');
         }
 
+        // --- SAFE DELETION ---
+
+        function requestSafeDelete(type, id = null) {
+            let message = "Are you sure you want to delete this?";
+            let action = () => {};
+
+            if (type === 'entry') {
+                message = "Remove this specific transaction? Wallet balance will be adjusted.";
+                action = () => {
+                    const idx = state.history.findIndex(h => h.id === id);
+                    state.wallet -= state.history[idx].delta;
+                    state.history.splice(idx, 1);
+                    save(); closeModal(); switchView('log');
+                };
+            } else if (type === 'activity') {
+                message = "Delete this activity from the market? Existing log entries will not be affected.";
+                action = () => {
+                    state.items = state.items.filter(i => i.id !== id);
+                    save(); closeModal(); switchView('market');
+                };
+            } else if (type === 'today') {
+                message = `Wipe ALL data for ${state.selectedDate}? Wallet will be adjusted.`;
+                action = () => {
+                    state.history.filter(h => h.date === state.selectedDate).forEach(h => state.wallet -= h.delta);
+                    state.history = state.history.filter(h => h.date !== state.selectedDate);
+                    save(); closeModal(); switchView('log');
+                };
+            } else if (type === 'all') {
+                message = "CRITICAL: Delete ALL history across ALL dates?";
+                action = () => {
+                    state.history = []; state.wallet = 10; state.debt = 0;
+                    save(); closeModal(); switchView('log');
+                };
+            }
+
+            showModal(`
+                <div class="p-6 text-center space-y-5">
+                    <div class="w-16 h-16 bg-system-danger/10 text-system-danger rounded-full flex items-center justify-center mx-auto"><i class="fa-solid fa-triangle-exclamation text-2xl"></i></div>
+                    <h3 class="font-bold text-white text-lg">Confirm Delete</h3>
+                    <p class="text-xs text-slate-400 leading-relaxed">${message}</p>
+                    <div class="flex flex-col gap-2">
+                        <button id="confirm-del-btn" class="bg-system-danger py-4 rounded-xl font-bold uppercase tracking-widest text-xs">Confirm</button>
+                        <button onclick="closeModal()" class="py-3 text-slate-500 text-xs font-bold">Cancel</button>
+                    </div>
+                </div>
+            `);
+            document.getElementById('confirm-del-btn').onclick = action;
+        }
+
+        // --- OTHER UTILS ---
+
+        function openLoanModal() {
+            showModal(`
+                <div class="p-6 space-y-5">
+                    <h3 class="font-bold text-white">Borrow Coins</h3>
+                    <input type="number" id="l-amount" placeholder="Amount" class="w-full bg-system-950 border border-system-700 rounded-xl p-4 text-white font-mono">
+                    <button onclick="takeLoan()" class="w-full bg-indigo-600 py-4 rounded-xl font-bold">Confirm Loan</button>
+                    <button onclick="closeModal()" class="w-full text-slate-500 text-xs py-2">Cancel</button>
+                </div>
+            `);
+        }
+
+        function takeLoan() {
+            const amount = parseFloat(document.getElementById('l-amount').value || 0);
+            if (amount <= 0) return;
+            const interest = amount * (state.settings.loanInterest / 100);
+            state.wallet += amount; state.debt += (amount + interest);
+            addHistory("Loan Received", amount); addHistory("Loan Fee", -interest);
+            save(); closeModal(); switchView('credit');
+        }
+
+        function openPaybackModal() {
+            showModal(`
+                <div class="p-6 space-y-5">
+                    <h3 class="font-bold text-white">Repay Credit</h3>
+                    <input type="number" id="p-amount" placeholder="Payment" class="w-full bg-system-950 border border-system-700 rounded-xl p-4 text-white font-mono">
+                    <button onclick="repayLoan()" class="w-full bg-system-success text-black py-4 rounded-xl font-bold">Pay Back</button>
+                    <button onclick="closeModal()" class="w-full text-slate-500 text-xs py-2">Cancel</button>
+                </div>
+            `);
+        }
+
+        function repayLoan() {
+            const amount = parseFloat(document.getElementById('p-amount').value || 0);
+            if (amount <= 0 || amount > state.wallet || amount > state.debt) return;
+            state.wallet -= amount; state.debt -= amount;
+            addHistory("Debt Repayment", -amount);
+            save(); closeModal(); switchView('credit');
+        }
+
         function openFineModal() {
             showModal(`
                 <div class="p-6 space-y-5">
-                    <h3 class="font-bold text-lg text-system-danger">Manual Fine</h3>
+                    <h3 class="font-bold text-system-danger">Manual Fine</h3>
                     <input type="text" id="f-reason" placeholder="Reason" class="w-full bg-system-950 border border-system-700 rounded-xl p-3 text-white">
                     <input type="number" id="f-amount" placeholder="Coins" class="w-full bg-system-950 border border-system-700 rounded-xl p-3 text-white font-mono">
                     <button onclick="applyFine()" class="w-full bg-system-danger text-white py-4 rounded-xl font-bold">Apply Fine</button>
@@ -514,60 +504,45 @@
         }
 
         function applyFine() {
-            const reason = document.getElementById('f-reason').value || "Manual Fine";
             const amount = parseFloat(document.getElementById('f-amount').value || 0);
             if (amount <= 0) return;
-            state.wallet -= amount;
-            addHistory(`Fine: ${reason}`, -amount);
+            state.wallet -= amount; addHistory(`Fine: ${document.getElementById('f-reason').value || "Fine"}`, -amount);
             save(); closeModal(); switchView('log');
         }
 
         function carryOverDay() {
             if (state.debt > 0) {
                 const interest = state.debt * (state.settings.dailyInterest / 100);
-                state.debt += interest;
-                addHistory("Daily Debt Carryover Fee", -interest);
+                state.debt += interest; addHistory("Daily Debt Fee", -interest);
                 save(); switchView('credit');
             }
         }
-
-        // --- DATA PORTABILITY & SETTINGS ---
 
         function openSettings() {
             showModal(`
                 <div class="p-6 space-y-6 max-h-[80vh] overflow-y-auto no-scrollbar">
                     <h3 class="font-bold text-white text-lg">Control Panel</h3>
-                    
                     <div class="space-y-4">
                         <h4 class="text-[10px] font-bold text-slate-500 uppercase tracking-widest border-b border-system-700 pb-1">Interest Settings</h4>
-                        <div>
-                            <label class="text-[10px] text-slate-400 block mb-1 ml-1">Loan Processing (%)</label>
-                            <input type="number" id="s-loan" value="${state.settings.loanInterest}" class="w-full bg-system-950 border border-system-700 rounded-xl p-3 text-white">
-                        </div>
-                        <div>
-                            <label class="text-[10px] text-slate-400 block mb-1 ml-1">Daily Carryover (%)</label>
-                            <input type="number" id="s-daily" value="${state.settings.dailyInterest}" class="w-full bg-system-950 border border-system-700 rounded-xl p-3 text-white">
-                        </div>
+                        <input type="number" id="s-loan" value="${state.settings.loanInterest}" class="w-full bg-system-950 border border-system-700 rounded-xl p-3 text-white">
+                        <input type="number" id="s-daily" value="${state.settings.dailyInterest}" class="w-full bg-system-950 border border-system-700 rounded-xl p-3 text-white">
                     </div>
-
                     <div class="space-y-3">
                         <h4 class="text-[10px] font-bold text-slate-500 uppercase tracking-widest border-b border-system-700 pb-1">Data Portability</h4>
                         <div class="grid grid-cols-2 gap-2">
-                            <button onclick="exportData('all')" class="bg-system-800 border border-system-700 text-white text-[10px] py-2 rounded-lg font-bold">EXPORT ALL</button>
-                            <button onclick="importTrigger('all')" class="bg-system-800 border border-system-700 text-white text-[10px] py-2 rounded-lg font-bold">IMPORT ALL</button>
-                            <button onclick="exportData('date')" class="bg-system-800 border border-system-700 text-system-accent text-[10px] py-2 rounded-lg font-bold">EXPORT DATE</button>
-                            <button onclick="importTrigger('date')" class="bg-system-800 border border-system-700 text-system-accent text-[10px] py-2 rounded-lg font-bold">IMPORT DATE</button>
+                            <button onclick="exportData('all')" class="bg-system-800 border border-system-700 text-white text-[10px] py-2 rounded-lg font-bold uppercase">Export All</button>
+                            <button onclick="importTrigger('all')" class="bg-system-800 border border-system-700 text-white text-[10px] py-2 rounded-lg font-bold uppercase">Import All</button>
+                            <button onclick="exportData('date')" class="bg-system-800 border border-system-700 text-system-accent text-[10px] py-2 rounded-lg font-bold uppercase">Export Date</button>
+                            <button onclick="importTrigger('date')" class="bg-system-800 border border-system-700 text-system-accent text-[10px] py-2 rounded-lg font-bold uppercase">Import Date</button>
                         </div>
                         <input type="file" id="import-file" class="hidden" onchange="handleImport(this)">
                     </div>
-
                     <div class="space-y-2 pt-4">
-                        <h4 class="text-[10px] font-bold text-system-danger uppercase tracking-widest border-b border-system-danger/20 pb-1">Destructive Actions</h4>
+                        <h4 class="text-[10px] font-bold text-system-danger uppercase tracking-widest border-b border-system-danger/20 pb-1">Destructive</h4>
                         <button onclick="requestSafeDelete('today')" class="w-full border border-system-danger/30 text-system-danger py-3 rounded-xl text-xs font-bold uppercase">Wipe ${state.selectedDate}</button>
                         <button onclick="requestSafeDelete('all')" class="w-full bg-system-danger/10 text-system-danger py-3 rounded-xl text-xs font-bold uppercase">Factory Reset History</button>
                     </div>
-
-                    <button onclick="saveSettings(); closeModal()" class="w-full bg-white text-black py-4 rounded-xl font-bold mt-4 shadow-xl">Apply Settings</button>
+                    <button onclick="saveSettings(); closeModal()" class="w-full bg-white text-black py-4 rounded-xl font-bold mt-4 shadow-xl">Apply</button>
                 </div>
             `);
         }
@@ -579,63 +554,31 @@
         }
 
         let importType = 'all';
-        function importTrigger(type) {
-            importType = type;
-            document.getElementById('import-file').click();
-        }
+        function importTrigger(type) { importType = type; document.getElementById('import-file').click(); }
 
         function exportData(type) {
-            let dataToExport = state;
-            let filename = `TC_BACKUP_${todayStr}.json`;
-            
-            if (type === 'date') {
-                dataToExport = state.history.filter(h => h.date === state.selectedDate);
-                filename = `TC_HISTORY_${state.selectedDate}.json`;
-            }
-
-            const blob = new Blob([JSON.stringify(dataToExport)], { type: 'application/json' });
+            const data = type === 'all' ? state : state.history.filter(h => h.date === state.selectedDate);
+            const blob = new Blob([JSON.stringify(data)], { type: 'application/json' });
             const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = filename;
-            a.click();
+            const a = document.createElement('a'); a.href = url; a.download = `TC_${type}_${todayStr}.json`; a.click();
         }
 
         function handleImport(input) {
-            const file = input.files[0];
-            if (!file) return;
+            const file = input.files[0]; if (!file) return;
             const reader = new FileReader();
             reader.onload = (e) => {
                 try {
                     const imported = JSON.parse(e.target.result);
-                    if (importType === 'all') {
-                        state = imported;
-                        save(); location.reload();
-                    } else {
-                        // Import history for specific date
-                        const others = state.history.filter(h => h.date !== state.selectedDate);
-                        state.history = [...others, ...imported];
-                        save(); switchView('log');
-                    }
-                } catch (err) {
-                    alert("Invalid file format.");
-                }
+                    if (importType === 'all') { state = imported; save(); location.reload(); }
+                    else { state.history = [...state.history.filter(h => h.date !== state.selectedDate), ...imported]; save(); switchView('log'); }
+                } catch (err) { alert("Invalid file."); }
             };
             reader.readAsText(file);
         }
 
-        function showModal(html) {
-            const overlay = document.getElementById('modal-overlay');
-            const card = document.getElementById('modal-card');
-            card.innerHTML = html;
-            overlay.classList.remove('hidden');
-        }
-
-        function closeModal() {
-            document.getElementById('modal-overlay').classList.add('hidden');
-        }
-
+        function showModal(html) { const overlay = document.getElementById('modal-overlay'); const card = document.getElementById('modal-card'); card.innerHTML = html; overlay.classList.remove('hidden'); }
+        function closeModal() { document.getElementById('modal-overlay').classList.add('hidden'); }
         load();
     </script>
 </body>
-</html>
+</html>   
